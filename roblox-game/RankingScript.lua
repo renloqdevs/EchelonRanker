@@ -34,7 +34,18 @@ local CONFIG = {
     TIMEOUT = 30,
     
     -- Enable debug prints
-    DEBUG = true
+    DEBUG = true,
+    
+    -- Retry settings
+    MAX_RETRIES = 3,
+    RETRY_DELAY = 2, -- seconds between retries
+    
+    -- Rate limiting (requests per minute)
+    RATE_LIMIT = 30,
+    
+    -- Queue settings
+    ENABLE_QUEUE = true,
+    MAX_QUEUE_SIZE = 50
 }
 
 -- ============================================
@@ -43,9 +54,16 @@ local CONFIG = {
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 -- Module table
 local RankingAPI = {}
+
+-- Internal state
+local requestQueue = {}
+local isProcessingQueue = false
+local requestCount = 0
+local lastResetTime = tick()
 
 -- Debug print function
 local function debugPrint(...)
@@ -54,8 +72,29 @@ local function debugPrint(...)
     end
 end
 
--- Make HTTP request to the API
-local function makeRequest(endpoint, method, body)
+-- Rate limiting check
+local function checkRateLimit()
+    local now = tick()
+    
+    -- Reset counter every minute
+    if now - lastResetTime >= 60 then
+        requestCount = 0
+        lastResetTime = now
+    end
+    
+    if requestCount >= CONFIG.RATE_LIMIT then
+        local waitTime = 60 - (now - lastResetTime)
+        debugPrint("Rate limited, waiting", math.ceil(waitTime), "seconds")
+        return false, waitTime
+    end
+    
+    return true, 0
+end
+
+-- Make HTTP request with retry logic
+local function makeRequestWithRetry(endpoint, method, body, retryCount)
+    retryCount = retryCount or 0
+    
     local url = CONFIG.API_URL .. endpoint
     
     local headers = {
@@ -73,7 +112,15 @@ local function makeRequest(endpoint, method, body)
         requestOptions.Body = HttpService:JSONEncode(body)
     end
     
-    debugPrint("Request:", method, endpoint)
+    debugPrint("Request:", method, endpoint, retryCount > 0 and ("(retry " .. retryCount .. ")") or "")
+    
+    -- Check rate limit
+    local canRequest, waitTime = checkRateLimit()
+    if not canRequest then
+        task.wait(waitTime)
+    end
+    
+    requestCount = requestCount + 1
     
     local success, response = pcall(function()
         return HttpService:RequestAsync(requestOptions)
@@ -81,14 +128,30 @@ local function makeRequest(endpoint, method, body)
     
     if not success then
         debugPrint("HTTP Error:", response)
+        
+        -- Retry on network errors
+        if retryCount < CONFIG.MAX_RETRIES then
+            debugPrint("Retrying in", CONFIG.RETRY_DELAY, "seconds...")
+            task.wait(CONFIG.RETRY_DELAY * (retryCount + 1)) -- Exponential backoff
+            return makeRequestWithRetry(endpoint, method, body, retryCount + 1)
+        end
+        
         return {
             success = false,
             error = "HTTP request failed",
-            message = tostring(response)
+            message = tostring(response),
+            retries = retryCount
         }
     end
     
     debugPrint("Response Status:", response.StatusCode)
+    
+    -- Retry on server errors (5xx)
+    if response.StatusCode >= 500 and retryCount < CONFIG.MAX_RETRIES then
+        debugPrint("Server error, retrying in", CONFIG.RETRY_DELAY, "seconds...")
+        task.wait(CONFIG.RETRY_DELAY * (retryCount + 1))
+        return makeRequestWithRetry(endpoint, method, body, retryCount + 1)
+    end
     
     local responseData
     local decodeSuccess, decodeResult = pcall(function()
@@ -107,6 +170,65 @@ local function makeRequest(endpoint, method, body)
     end
     
     return responseData
+end
+
+-- Legacy wrapper for compatibility
+local function makeRequest(endpoint, method, body)
+    return makeRequestWithRetry(endpoint, method, body, 0)
+end
+
+-- ============================================
+-- QUEUE SYSTEM
+-- ============================================
+
+-- Add request to queue
+local function queueRequest(endpoint, method, body, callback)
+    if #requestQueue >= CONFIG.MAX_QUEUE_SIZE then
+        debugPrint("Queue full, dropping oldest request")
+        table.remove(requestQueue, 1)
+    end
+    
+    table.insert(requestQueue, {
+        endpoint = endpoint,
+        method = method,
+        body = body,
+        callback = callback,
+        timestamp = tick()
+    })
+    
+    debugPrint("Request queued, queue size:", #requestQueue)
+end
+
+-- Process queue
+local function processQueue()
+    if isProcessingQueue or #requestQueue == 0 then return end
+    
+    isProcessingQueue = true
+    
+    while #requestQueue > 0 do
+        local request = table.remove(requestQueue, 1)
+        
+        local result = makeRequest(request.endpoint, request.method, request.body)
+        
+        if request.callback then
+            task.spawn(request.callback, result)
+        end
+        
+        -- Small delay between requests
+        task.wait(0.1)
+    end
+    
+    isProcessingQueue = false
+end
+
+-- Start queue processor
+if CONFIG.ENABLE_QUEUE then
+    task.spawn(function()
+        while true do
+            processQueue()
+            task.wait(1)
+        end
+    end)
 end
 
 -- ============================================
@@ -228,6 +350,100 @@ end
 function RankingAPI:IsOnline()
     local response = makeRequest("/health", "GET", nil)
     return response and response.status == "ok"
+end
+
+--[[
+    Get detailed API health information
+    @return (table) - Response from the API with health details
+    
+    Example:
+        local health = RankingAPI:GetHealth()
+        if health.status == "ok" then
+            print("Uptime:", health.uptime, "seconds")
+        end
+--]]
+function RankingAPI:GetHealth()
+    return makeRequest("/health", "GET", nil)
+end
+
+-- ============================================
+-- QUEUED OPERATIONS (NON-BLOCKING)
+-- ============================================
+
+--[[
+    Queue a rank change (non-blocking)
+    @param userId (number) - The player's Roblox UserId
+    @param rank (number) - The rank number to set
+    @param callback (function) - Optional callback when complete
+    
+    Example:
+        RankingAPI:QueueSetRank(12345678, 5, function(result)
+            if result.success then
+                print("Rank changed!")
+            end
+        end)
+--]]
+function RankingAPI:QueueSetRank(userId, rank, callback)
+    if not CONFIG.ENABLE_QUEUE then
+        local result = self:SetRank(userId, rank)
+        if callback then callback(result) end
+        return
+    end
+    
+    queueRequest("/api/rank", "POST", {
+        userId = userId,
+        rank = rank
+    }, callback)
+end
+
+--[[
+    Queue a promotion (non-blocking)
+    @param userId (number) - The player's Roblox UserId
+    @param callback (function) - Optional callback when complete
+--]]
+function RankingAPI:QueuePromote(userId, callback)
+    if not CONFIG.ENABLE_QUEUE then
+        local result = self:Promote(userId)
+        if callback then callback(result) end
+        return
+    end
+    
+    queueRequest("/api/promote", "POST", {
+        userId = userId
+    }, callback)
+end
+
+--[[
+    Queue a demotion (non-blocking)
+    @param userId (number) - The player's Roblox UserId
+    @param callback (function) - Optional callback when complete
+--]]
+function RankingAPI:QueueDemote(userId, callback)
+    if not CONFIG.ENABLE_QUEUE then
+        local result = self:Demote(userId)
+        if callback then callback(result) end
+        return
+    end
+    
+    queueRequest("/api/demote", "POST", {
+        userId = userId
+    }, callback)
+end
+
+--[[
+    Get the current queue size
+    @return (number) - Number of pending requests
+--]]
+function RankingAPI:GetQueueSize()
+    return #requestQueue
+end
+
+--[[
+    Clear the request queue
+--]]
+function RankingAPI:ClearQueue()
+    requestQueue = {}
+    debugPrint("Queue cleared")
 end
 
 -- ============================================

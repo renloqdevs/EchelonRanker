@@ -385,6 +385,17 @@ class RankScreen {
                     message: `${this.state.user.username}: ${result.oldRankName} -> ${result.newRankName}`
                 });
                 config.updateStats('rank');
+
+                // Add to favorites for quick access later
+                config.addFavorite({
+                    userId: this.state.user.userId,
+                    username: this.state.user.username,
+                    rank: result.newRank,
+                    rankName: result.newRankName
+                });
+
+                // Add to search history
+                config.addSearchHistory(this.state.user.username);
             } else {
                 this.state.error = result.message;
             }

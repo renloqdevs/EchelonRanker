@@ -50,7 +50,7 @@ class DashboardScreen {
 
         // Key hints
         components.drawKeyHints([
-            { key: '1-8', action: 'Select' },
+            { key: '1-9', action: 'Select' },
             { key: 'R', action: 'Refresh' },
             { key: 'Q', action: 'Quit' }
         ]);
@@ -99,19 +99,24 @@ class DashboardScreen {
     renderMenuSection(x, y, width) {
         const keyColor = renderer.color('menuKey');
         const textColor = renderer.color('menuItem');
+        const dimColor = renderer.color('textDim');
+
+        const favorites = config.getFavorites();
+        const favCount = favorites.length > 0 ? ` (${favorites.length})` : '';
 
         const leftMenuItems = [
             { key: '1', label: 'Rank User' },
             { key: '2', label: 'Promote User' },
             { key: '3', label: 'Demote User' },
-            { key: '4', label: 'Search Members' }
+            { key: '4', label: 'Search Members' },
+            { key: '5', label: `Favorites${favCount}` }
         ];
 
         const rightMenuItems = [
-            { key: '5', label: 'View Roles' },
-            { key: '6', label: 'Activity Logs' },
-            { key: '7', label: 'Settings' },
-            { key: '8', label: 'Help' }
+            { key: '6', label: 'View Roles' },
+            { key: '7', label: 'Activity Logs' },
+            { key: '8', label: 'Settings' },
+            { key: '9', label: 'Help' }
         ];
 
         // Left column
@@ -130,8 +135,13 @@ class DashboardScreen {
         });
 
         // Quit option
-        renderer.writeAt(x + 2, y + 5, 
+        renderer.writeAt(x + 2, y + 6, 
             `${keyColor}[Q]${renderer.constructor.ANSI.RESET} ${textColor}Quit${renderer.constructor.ANSI.RESET}`
+        );
+
+        // Quick tip
+        renderer.writeAt(x, y + 8, 
+            `${dimColor}Tip: Add users to Favorites for quick repeat ranking${renderer.constructor.ANSI.RESET}`
         );
     }
 
@@ -170,10 +180,11 @@ class DashboardScreen {
         input.on('2', () => this.app.showScreen('promote'));
         input.on('3', () => this.app.showScreen('demote'));
         input.on('4', () => this.app.showScreen('search'));
-        input.on('5', () => this.app.showScreen('roles'));
-        input.on('6', () => this.app.showScreen('logs'));
-        input.on('7', () => this.app.showScreen('settings'));
-        input.on('8', () => this.app.showScreen('help'));
+        input.on('5', () => this.app.showScreen('favorites'));
+        input.on('6', () => this.app.showScreen('roles'));
+        input.on('7', () => this.app.showScreen('logs'));
+        input.on('8', () => this.app.showScreen('settings'));
+        input.on('9', () => this.app.showScreen('help'));
 
         // Refresh
         input.on('r', () => this.refresh());

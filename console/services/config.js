@@ -64,7 +64,15 @@ class ConfigService {
                 totalPromotions: 0,
                 totalDemotions: 0,
                 lastActivity: null
-            }
+            },
+
+            // Favorites - frequently ranked users
+            favorites: [],
+            maxFavorites: 20,
+
+            // Command/search history
+            searchHistory: [],
+            maxSearchHistory: 50
         };
     }
 
@@ -431,6 +439,146 @@ class ConfigService {
      */
     getConfigPath() {
         return this.configFile;
+    }
+
+    // ============================================
+    // FAVORITES MANAGEMENT
+    // ============================================
+
+    /**
+     * Add a user to favorites
+     */
+    addFavorite(user) {
+        // Check if already in favorites
+        const existing = this.config.favorites.findIndex(f => f.userId === user.userId);
+        if (existing !== -1) {
+            // Update existing and move to top
+            this.config.favorites.splice(existing, 1);
+        }
+
+        // Add to top of favorites
+        this.config.favorites.unshift({
+            userId: user.userId,
+            username: user.username,
+            lastRank: user.rank,
+            lastRankName: user.rankName,
+            addedAt: new Date().toISOString(),
+            useCount: (existing !== -1 ? this.config.favorites[existing]?.useCount || 0 : 0) + 1
+        });
+
+        // Trim to max
+        if (this.config.favorites.length > this.config.maxFavorites) {
+            this.config.favorites = this.config.favorites.slice(0, this.config.maxFavorites);
+        }
+
+        this.save();
+    }
+
+    /**
+     * Remove a user from favorites
+     */
+    removeFavorite(userId) {
+        this.config.favorites = this.config.favorites.filter(f => f.userId !== userId);
+        this.save();
+    }
+
+    /**
+     * Get all favorites
+     */
+    getFavorites() {
+        return [...this.config.favorites];
+    }
+
+    /**
+     * Check if user is a favorite
+     */
+    isFavorite(userId) {
+        return this.config.favorites.some(f => f.userId === userId);
+    }
+
+    /**
+     * Increment favorite use count
+     */
+    incrementFavoriteUse(userId) {
+        const fav = this.config.favorites.find(f => f.userId === userId);
+        if (fav) {
+            fav.useCount = (fav.useCount || 0) + 1;
+            fav.lastUsed = new Date().toISOString();
+            this.save();
+        }
+    }
+
+    // ============================================
+    // SEARCH HISTORY MANAGEMENT
+    // ============================================
+
+    /**
+     * Add to search history
+     */
+    addSearchHistory(query) {
+        // Remove if already exists
+        this.config.searchHistory = this.config.searchHistory.filter(q => q !== query);
+        
+        // Add to front
+        this.config.searchHistory.unshift(query);
+        
+        // Trim to max
+        if (this.config.searchHistory.length > this.config.maxSearchHistory) {
+            this.config.searchHistory = this.config.searchHistory.slice(0, this.config.maxSearchHistory);
+        }
+        
+        this.save();
+    }
+
+    /**
+     * Get search history
+     */
+    getSearchHistory(limit = 10) {
+        return this.config.searchHistory.slice(0, limit);
+    }
+
+    /**
+     * Clear search history
+     */
+    clearSearchHistory() {
+        this.config.searchHistory = [];
+        this.save();
+    }
+
+    /**
+     * Get search suggestions based on partial input
+     */
+    getSearchSuggestions(partial, limit = 5) {
+        if (!partial) return [];
+        const lower = partial.toLowerCase();
+        
+        // Combine favorites and history
+        const suggestions = [];
+        
+        // Add matching favorites first
+        for (const fav of this.config.favorites) {
+            if (fav.username.toLowerCase().startsWith(lower)) {
+                suggestions.push({
+                    type: 'favorite',
+                    value: fav.username,
+                    userId: fav.userId,
+                    rank: fav.lastRankName
+                });
+            }
+        }
+        
+        // Add matching history
+        for (const query of this.config.searchHistory) {
+            if (query.toLowerCase().startsWith(lower) && 
+                !suggestions.some(s => s.value.toLowerCase() === query.toLowerCase())) {
+                suggestions.push({
+                    type: 'history',
+                    value: query
+                });
+            }
+        }
+        
+        return suggestions.slice(0, limit);
     }
 }
 

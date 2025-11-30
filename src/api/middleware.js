@@ -9,6 +9,49 @@ const config = require('../config');
 const { colors } = require('../utils/colors');
 
 /**
+ * Generate unique request ID
+ */
+function generateRequestId() {
+    return Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
+}
+
+/**
+ * Request ID middleware - adds unique ID to each request
+ */
+function requestId(req, res, next) {
+    req.id = req.headers['x-request-id'] || generateRequestId();
+    res.setHeader('X-Request-ID', req.id);
+    next();
+}
+
+/**
+ * CORS middleware - enables cross-origin requests
+ */
+function cors(req, res, next) {
+    // Allow requests from any origin (configure for production)
+    const allowedOrigins = process.env.CORS_ORIGINS ? 
+        process.env.CORS_ORIGINS.split(',') : ['*'];
+    
+    const origin = req.headers.origin;
+    
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    }
+    
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, X-Request-ID');
+    res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+    res.setHeader('Access-Control-Expose-Headers', 'X-Request-ID, X-RateLimit-Limit, X-RateLimit-Remaining');
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+        return res.status(204).end();
+    }
+    
+    next();
+}
+
+/**
  * API Key authentication middleware
  * Checks for valid API key in header or body
  */
@@ -73,11 +116,21 @@ const rateLimiter = rateLimit({
 
 /**
  * Request logging middleware
- * Logs incoming requests for debugging
+ * Logs incoming requests for debugging with request ID
  */
 function requestLogger(req, res, next) {
     const timestamp = new Date().toISOString();
-    console.log(`${colors.blue}[REQUEST]${colors.reset} ${timestamp} | ${req.method} ${req.path} | IP: ${req.ip}`);
+    const reqId = req.id ? `[${req.id}]` : '';
+    console.log(`${colors.blue}[REQUEST]${colors.reset} ${timestamp} ${reqId} | ${req.method} ${req.path} | IP: ${req.ip}`);
+    
+    // Log response time on finish
+    const startTime = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - startTime;
+        const statusColor = res.statusCode >= 400 ? colors.red : colors.green;
+        console.log(`${statusColor}[RESPONSE]${colors.reset} ${reqId} | ${res.statusCode} | ${duration}ms`);
+    });
+    
     next();
 }
 
@@ -189,5 +242,7 @@ module.exports = {
     errorHandler,
     validateUserId,
     validateRank,
-    securityHeaders
+    securityHeaders,
+    requestId,
+    cors
 };

@@ -21,21 +21,101 @@ router.use('/api', middleware.authenticate);
 // HEALTH CHECK (No auth required)
 // ============================================
 
+// Track server start time for uptime calculation
+const serverStartTime = Date.now();
+
 /**
  * GET /health
  * Returns server status - useful for uptime monitoring
  */
 router.get('/health', (req, res) => {
     const botUser = client.getBotUser();
+    const botRank = client.getBotRank();
+    const memUsage = process.memoryUsage();
+    
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
+        uptime: Math.floor((Date.now() - serverStartTime) / 1000),
+        version: '1.0.0',
         bot: botUser ? {
             username: botUser.UserName,
-            userId: botUser.UserID
-        } : null
+            userId: botUser.UserID,
+            rank: botRank
+        } : null,
+        system: {
+            nodeVersion: process.version,
+            platform: process.platform,
+            memory: {
+                used: Math.round(memUsage.heapUsed / 1024 / 1024),
+                total: Math.round(memUsage.heapTotal / 1024 / 1024),
+                unit: 'MB'
+            }
+        }
     });
 });
+
+/**
+ * GET /health/detailed
+ * Returns detailed server status with more system info
+ */
+router.get('/health/detailed', middleware.authenticate, (req, res) => {
+    const botUser = client.getBotUser();
+    const botRank = client.getBotRank();
+    const roles = ranking.getAllRoles();
+    const logStats = auditLog.getStats();
+    const memUsage = process.memoryUsage();
+    
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptime: {
+            seconds: Math.floor((Date.now() - serverStartTime) / 1000),
+            formatted: formatUptime(Date.now() - serverStartTime)
+        },
+        version: '1.0.0',
+        bot: botUser ? {
+            username: botUser.UserName,
+            userId: botUser.UserID,
+            rank: botRank,
+            rankableLevels: roles.filter(r => r.canAssign).length
+        } : null,
+        group: {
+            totalRoles: roles.length,
+            assignableRoles: roles.filter(r => r.canAssign).length
+        },
+        operations: logStats,
+        system: {
+            nodeVersion: process.version,
+            platform: process.platform,
+            arch: process.arch,
+            pid: process.pid,
+            memory: {
+                heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+                heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+                rss: Math.round(memUsage.rss / 1024 / 1024),
+                external: Math.round(memUsage.external / 1024 / 1024),
+                unit: 'MB'
+            },
+            cpuUsage: process.cpuUsage()
+        }
+    });
+});
+
+/**
+ * Format uptime to human readable string
+ */
+function formatUptime(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}d ${hours % 24}h ${minutes % 60}m`;
+    if (hours > 0) return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+    return `${seconds}s`;
+}
 
 // ============================================
 // RANKING ENDPOINTS

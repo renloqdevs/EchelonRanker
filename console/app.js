@@ -20,6 +20,7 @@ const LogsScreen = require('./screens/logs');
 const SettingsScreen = require('./screens/settings');
 const HelpScreen = require('./screens/help');
 const SetupScreen = require('./screens/setup');
+const FavoritesScreen = require('./screens/favorites');
 
 class Application {
     constructor() {
@@ -56,7 +57,8 @@ class Application {
             logs: new LogsScreen(this),
             settings: new SettingsScreen(this),
             help: new HelpScreen(this),
-            setup: new SetupScreen(this)
+            setup: new SetupScreen(this),
+            favorites: new FavoritesScreen(this)
         };
     }
 

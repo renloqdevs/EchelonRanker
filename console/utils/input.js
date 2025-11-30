@@ -14,6 +14,12 @@ class InputHandler {
         this.textInputCallback = null;
         this.textInputOptions = {};
         this.isInitialized = false;
+        
+        // Command history support
+        this.history = [];
+        this.historyIndex = -1;
+        this.maxHistory = 50;
+        this.tempBuffer = ''; // Store current input when navigating history
     }
 
     /**
@@ -78,19 +84,27 @@ class InputHandler {
      * Handle text input mode
      */
     handleTextInput(str, key) {
-        const { onInput, onComplete, onCancel, maxLength, validator } = this.textInputOptions;
+        const { onInput, onComplete, onCancel, maxLength, validator, enableHistory } = this.textInputOptions;
 
         if (key.name === 'escape') {
             this.inputMode = 'navigation';
             this.inputBuffer = '';
+            this.historyIndex = -1;
             if (onCancel) onCancel();
             return;
         }
 
         if (key.name === 'return') {
             const value = this.inputBuffer;
+            
+            // Add to history if enabled and not empty
+            if (enableHistory && value.trim()) {
+                this.addToHistory(value);
+            }
+            
             this.inputMode = 'navigation';
             this.inputBuffer = '';
+            this.historyIndex = -1;
             if (onComplete) onComplete(value);
             return;
         }
@@ -101,14 +115,107 @@ class InputHandler {
             return;
         }
 
+        // History navigation with up/down arrows
+        if (enableHistory && key.name === 'up') {
+            this.navigateHistory(1, onInput);
+            return;
+        }
+
+        if (enableHistory && key.name === 'down') {
+            this.navigateHistory(-1, onInput);
+            return;
+        }
+
         // Add character to buffer
         if (str && str.length === 1) {
             if (maxLength && this.inputBuffer.length >= maxLength) return;
             if (validator && !validator(str)) return;
             
+            // Reset history navigation when typing
+            if (this.historyIndex !== -1) {
+                this.historyIndex = -1;
+            }
+            
             this.inputBuffer += str;
             if (onInput) onInput(this.inputBuffer);
         }
+    }
+
+    /**
+     * Navigate through command history
+     */
+    navigateHistory(direction, onInput) {
+        if (this.history.length === 0) return;
+
+        // Save current buffer when starting to navigate
+        if (this.historyIndex === -1 && direction > 0) {
+            this.tempBuffer = this.inputBuffer;
+        }
+
+        const newIndex = this.historyIndex + direction;
+
+        if (newIndex < -1) {
+            // Going past the beginning, restore temp buffer
+            this.historyIndex = -1;
+            this.inputBuffer = this.tempBuffer;
+        } else if (newIndex >= this.history.length) {
+            // At the end of history, don't go further
+            return;
+        } else if (newIndex === -1) {
+            // Back to current input
+            this.historyIndex = -1;
+            this.inputBuffer = this.tempBuffer;
+        } else {
+            // Navigate through history
+            this.historyIndex = newIndex;
+            this.inputBuffer = this.history[this.historyIndex];
+        }
+
+        if (onInput) onInput(this.inputBuffer);
+    }
+
+    /**
+     * Add entry to command history
+     */
+    addToHistory(entry) {
+        // Don't add duplicates at the front
+        if (this.history[0] === entry) return;
+        
+        // Remove if exists elsewhere
+        const existingIndex = this.history.indexOf(entry);
+        if (existingIndex > -1) {
+            this.history.splice(existingIndex, 1);
+        }
+        
+        // Add to front
+        this.history.unshift(entry);
+        
+        // Trim to max
+        if (this.history.length > this.maxHistory) {
+            this.history = this.history.slice(0, this.maxHistory);
+        }
+    }
+
+    /**
+     * Get command history
+     */
+    getHistory() {
+        return [...this.history];
+    }
+
+    /**
+     * Set command history (for persistence)
+     */
+    setHistory(history) {
+        this.history = Array.isArray(history) ? history.slice(0, this.maxHistory) : [];
+    }
+
+    /**
+     * Clear command history
+     */
+    clearHistory() {
+        this.history = [];
+        this.historyIndex = -1;
     }
 
     /**
@@ -191,12 +298,15 @@ class InputHandler {
     startTextInput(options = {}) {
         this.inputMode = 'text';
         this.inputBuffer = options.initialValue || '';
+        this.historyIndex = -1;
+        this.tempBuffer = '';
         this.textInputOptions = {
             onInput: options.onInput || (() => {}),
             onComplete: options.onComplete || (() => {}),
             onCancel: options.onCancel || (() => {}),
             maxLength: options.maxLength || 100,
-            validator: options.validator || null
+            validator: options.validator || null,
+            enableHistory: options.enableHistory !== false // Enable by default
         };
 
         if (options.initialValue && options.onInput) {

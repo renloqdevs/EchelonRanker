@@ -19,6 +19,12 @@ function createApp() {
     // Trust proxy (required for Railway and other platforms)
     app.set('trust proxy', 1);
 
+    // Request ID tracking
+    app.use(middleware.requestId);
+
+    // CORS support
+    app.use(middleware.cors);
+
     // Security headers
     app.use(middleware.securityHeaders);
 
@@ -43,6 +49,10 @@ function createApp() {
     return app;
 }
 
+// Track active connections for graceful shutdown
+let activeConnections = new Set();
+let isShuttingDown = false;
+
 /**
  * Start the HTTP server
  * @param {Object} app - Express app instance
@@ -63,22 +73,29 @@ function startServer(app) {
             console.log('');
             console.log(`${colors.magenta}${colors.bold}Available Endpoints:${colors.reset}`);
             console.log(`${colors.blue}  GET  /health${colors.reset}              - Check server status`);
+            console.log(`${colors.blue}  GET  /health/detailed${colors.reset}     - Detailed status (auth required)`);
             console.log(`${colors.blue}  GET  /api/rank/:userId${colors.reset}    - Get user's rank`);
             console.log(`${colors.blue}  GET  /api/user/:username${colors.reset}  - Get user by username`);
             console.log(`${colors.blue}  GET  /api/roles${colors.reset}           - List all group roles`);
             console.log(`${colors.blue}  POST /api/rank${colors.reset}            - Set user's rank`);
             console.log(`${colors.blue}  POST /api/rank/username${colors.reset}   - Set rank by username`);
+            console.log(`${colors.blue}  POST /api/rank/bulk${colors.reset}       - Bulk rank operation`);
             console.log(`${colors.blue}  POST /api/promote${colors.reset}         - Promote user`);
-            console.log(`${colors.blue}  POST /api/promote/username${colors.reset}- Promote by username`);
             console.log(`${colors.blue}  POST /api/demote${colors.reset}          - Demote user`);
-            console.log(`${colors.blue}  POST /api/demote/username${colors.reset} - Demote by username`);
             console.log('');
             console.log(`${colors.yellow}Rate Limit:${colors.reset} ${config.rateLimit.max} requests per 15 minutes`);
+            console.log(`${colors.yellow}CORS:${colors.reset} Enabled`);
             console.log('');
             console.log(`${colors.green}${colors.bold}Ready to receive requests!${colors.reset}`);
             console.log('');
 
             resolve(server);
+        });
+
+        // Track connections for graceful shutdown
+        server.on('connection', (conn) => {
+            activeConnections.add(conn);
+            conn.on('close', () => activeConnections.delete(conn));
         });
 
         server.on('error', (error) => {
@@ -90,7 +107,50 @@ function startServer(app) {
             }
             reject(error);
         });
+
+        // Setup graceful shutdown
+        setupGracefulShutdown(server);
     });
+}
+
+/**
+ * Setup graceful shutdown handlers
+ */
+function setupGracefulShutdown(server) {
+    const shutdown = async (signal) => {
+        if (isShuttingDown) return;
+        isShuttingDown = true;
+
+        console.log(`\n${colors.yellow}[SHUTDOWN]${colors.reset} ${signal} received, starting graceful shutdown...`);
+        
+        // Stop accepting new connections
+        server.close(() => {
+            console.log(`${colors.green}[SHUTDOWN]${colors.reset} Server closed, no longer accepting connections`);
+        });
+
+        // Close existing connections with timeout
+        console.log(`${colors.yellow}[SHUTDOWN]${colors.reset} Closing ${activeConnections.size} active connections...`);
+        
+        // Give connections 5 seconds to finish
+        const forceCloseTimeout = setTimeout(() => {
+            console.log(`${colors.yellow}[SHUTDOWN]${colors.reset} Force closing remaining connections`);
+            activeConnections.forEach(conn => conn.destroy());
+        }, 5000);
+
+        // Wait for connections to close naturally
+        const checkConnections = setInterval(() => {
+            if (activeConnections.size === 0) {
+                clearInterval(checkConnections);
+                clearTimeout(forceCloseTimeout);
+                console.log(`${colors.green}[SHUTDOWN]${colors.reset} All connections closed`);
+                console.log(`${colors.green}[SHUTDOWN]${colors.reset} Graceful shutdown complete`);
+                process.exit(0);
+            }
+        }, 100);
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 module.exports = {
