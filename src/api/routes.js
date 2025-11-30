@@ -36,7 +36,7 @@ router.get('/health', (req, res) => {
         status: 'ok',
         timestamp: new Date().toISOString(),
         uptime: Math.floor((Date.now() - serverStartTime) / 1000),
-        version: '1.1.0',
+        version: '1.1.1',
         // Only expose whether bot is connected, not details
         botConnected: !!botUser
     });
@@ -61,7 +61,7 @@ router.get('/health/detailed', middleware.authenticate, (req, res) => {
             seconds: Math.floor((Date.now() - serverStartTime) / 1000),
             formatted: formatUptime(Date.now() - serverStartTime)
         },
-        version: '1.1.0',
+        version: '1.1.1',
         bot: botUser ? {
             username: botUser.UserName,
             userId: botUser.UserID,
@@ -389,17 +389,12 @@ router.get('/api/roles', (req, res) => {
  * Body: { username: string, rank: number } OR { username: string, rankName: string }
  */
 router.post('/api/rank/username',
+    middleware.validateUsername,
+    middleware.validateRank,
     async (req, res, next) => {
         try {
-            const { username, rank, rankName } = req.body;
-
-            if (!username) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Missing required field',
-                    message: 'username is required'
-                });
-            }
+            const username = req.robloxUsername;
+            const { rank, rankName } = req.body;
 
             if (rank === undefined && !rankName) {
                 return res.status(400).json({
@@ -456,17 +451,10 @@ router.post('/api/rank/username',
  * Body: { username: string }
  */
 router.post('/api/promote/username',
+    middleware.validateUsername,
     async (req, res, next) => {
         try {
-            const { username } = req.body;
-
-            if (!username) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Missing required field',
-                    message: 'username is required'
-                });
-            }
+            const username = req.robloxUsername;
 
             // Get user ID from username
             const userId = await ranking.getUserIdFromUsername(username);
@@ -507,17 +495,10 @@ router.post('/api/promote/username',
  * Body: { username: string }
  */
 router.post('/api/demote/username',
+    middleware.validateUsername,
     async (req, res, next) => {
         try {
-            const { username } = req.body;
-
-            if (!username) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Missing required field',
-                    message: 'username is required'
-                });
-            }
+            const username = req.robloxUsername;
 
             // Get user ID from username
             const userId = await ranking.getUserIdFromUsername(username);
@@ -557,6 +538,56 @@ router.post('/api/demote/username',
 // ============================================
 
 /**
+ * Validate a single user entry for bulk operations
+ * @param {Object} user - User entry to validate
+ * @returns {Object} Validation result with valid flag and error message
+ */
+function validateBulkUserEntry(user) {
+    // Must have either userId or username
+    if (!user.userId && !user.username) {
+        return { valid: false, error: 'Must provide userId or username' };
+    }
+    
+    // Validate userId if provided
+    if (user.userId !== undefined) {
+        const parsedId = parseInt(user.userId);
+        if (isNaN(parsedId) || parsedId <= 0 || parsedId > Number.MAX_SAFE_INTEGER) {
+            return { valid: false, error: 'Invalid userId - must be a positive integer' };
+        }
+    }
+    
+    // Validate username if provided (Roblox: 3-20 chars, alphanumeric + underscore)
+    if (user.username !== undefined) {
+        if (typeof user.username !== 'string' || 
+            user.username.length < 3 || 
+            user.username.length > 20 ||
+            !/^[a-zA-Z0-9_]+$/.test(user.username)) {
+            return { valid: false, error: 'Invalid username - must be 3-20 alphanumeric characters or underscores' };
+        }
+    }
+    
+    // Must have either rank or rankName
+    if (user.rank === undefined && !user.rankName) {
+        return { valid: false, error: 'Must provide rank or rankName' };
+    }
+    
+    // Validate rank if provided
+    if (user.rank !== undefined) {
+        const parsedRank = parseInt(user.rank);
+        if (isNaN(parsedRank) || parsedRank < 0 || parsedRank > 255) {
+            return { valid: false, error: 'Invalid rank - must be between 0 and 255' };
+        }
+    }
+    
+    // Validate rankName if provided
+    if (user.rankName !== undefined && (typeof user.rankName !== 'string' || user.rankName.length === 0)) {
+        return { valid: false, error: 'Invalid rankName - must be a non-empty string' };
+    }
+    
+    return { valid: true };
+}
+
+/**
  * POST /api/rank/bulk
  * Rank multiple users at once with parallel processing
  * Body: { users: [{ userId: number, rank: number }] } OR { users: [{ username: string, rankName: string }] }
@@ -579,6 +610,24 @@ router.post('/api/rank/bulk',
                     success: false,
                     error: 'Too many users',
                     message: 'Maximum 10 users per bulk operation'
+                });
+            }
+
+            // Validate all entries upfront before processing
+            const validationErrors = [];
+            for (let i = 0; i < users.length; i++) {
+                const validation = validateBulkUserEntry(users[i]);
+                if (!validation.valid) {
+                    validationErrors.push({ index: i, error: validation.error, user: users[i] });
+                }
+            }
+            
+            if (validationErrors.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Validation failed',
+                    message: `${validationErrors.length} user entries failed validation`,
+                    validationErrors
                 });
             }
 

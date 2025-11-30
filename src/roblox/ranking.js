@@ -37,16 +37,23 @@ function cacheUser(key, data) {
 }
 
 /**
- * Get a user's ID from their username
+ * Get a user's ID from their username (with caching)
  * @param {string} username - Roblox username
  * @returns {Promise<number>} User ID
  */
 async function getUserIdFromUsername(username) {
+    const cacheKey = `username_${username.toLowerCase()}`;
+    const cached = getCachedUser(cacheKey);
+    if (cached) return cached;
+
     try {
         const userId = await noblox.getIdFromUsername(username);
         if (!userId) {
             throw new Error(`User "${username}" not found`);
         }
+        cacheUser(cacheKey, userId);
+        // Also cache the reverse lookup
+        cacheUser(`userid_${userId}`, username);
         return userId;
     } catch (error) {
         throw new Error(`Failed to find user "${username}": ${error.message}`);
@@ -54,20 +61,35 @@ async function getUserIdFromUsername(username) {
 }
 
 /**
- * Get a user's username from their ID
+ * Get a user's username from their ID (with caching)
  * @param {number} userId - Roblox user ID
  * @returns {Promise<string>} Username
  */
 async function getUsernameFromId(userId) {
+    const cacheKey = `userid_${userId}`;
+    const cached = getCachedUser(cacheKey);
+    if (cached) return cached;
+
     try {
         const username = await noblox.getUsernameFromId(userId);
         if (!username) {
             throw new Error(`User with ID ${userId} not found`);
         }
+        cacheUser(cacheKey, username);
+        // Also cache the reverse lookup
+        cacheUser(`username_${username.toLowerCase()}`, userId);
         return username;
     } catch (error) {
         throw new Error(`Failed to find user with ID ${userId}: ${error.message}`);
     }
+}
+
+/**
+ * Invalidate cached rank for a user (call after rank changes)
+ * @param {number} userId - Roblox user ID
+ */
+function invalidateUserRankCache(userId) {
+    userCache.delete(`rank_${userId}`);
 }
 
 /**
@@ -85,9 +107,8 @@ async function getUserRank(userId) {
         // Get rank number - this is the primary call
         const rank = await noblox.getRankInGroup(config.roblox.groupId, userId);
         
-        // Get rank name from our cached roles instead of another API call
-        const groupRoles = client.getGroupRoles();
-        const roleInfo = groupRoles.find(r => r.rank === rank);
+        // Get rank name using O(1) lookup instead of array find
+        const roleInfo = client.getRoleByRank(rank);
         const rankName = roleInfo?.name || 'Unknown';
 
         const result = {
@@ -112,10 +133,9 @@ async function getUserRank(userId) {
  */
 function validateRankChange(targetRank, currentRank) {
     const botRank = client.getBotRank();
-    const groupRoles = client.getGroupRoles();
 
-    // Check if rank exists
-    const targetRole = groupRoles.find(role => role.rank === targetRank);
+    // Check if rank exists using O(1) lookup
+    const targetRole = client.getRoleByRank(targetRank);
     if (!targetRole) {
         return {
             valid: false,
@@ -199,6 +219,9 @@ async function setRank(userId, rank) {
         console.log(`${colors.blue}[RANKING]${colors.reset} Setting user ${userId} to rank ${rank} (${validation.targetRole.name})`);
         await noblox.setRank(config.roblox.groupId, userId, rank);
 
+        // Invalidate cache after successful rank change
+        invalidateUserRankCache(userId);
+
         const result = {
             success: true,
             message: `Successfully changed rank`,
@@ -227,15 +250,12 @@ async function setRank(userId, rank) {
  * @returns {Promise<Object>} Result of the operation
  */
 async function setRankByName(userId, roleName) {
-    const groupRoles = client.getGroupRoles();
-
-    // Find the role by name (case-insensitive)
-    const targetRole = groupRoles.find(role =>
-        role.name.toLowerCase() === roleName.toLowerCase()
-    );
+    // Use O(1) lookup for exact match (case-insensitive)
+    const targetRole = client.getRoleByName(roleName);
 
     if (!targetRole) {
-        // Try partial match
+        // Try partial match as fallback
+        const groupRoles = client.getGroupRoles();
         const partialMatch = groupRoles.find(role =>
             role.name.toLowerCase().includes(roleName.toLowerCase())
         );
@@ -264,11 +284,10 @@ async function promote(userId) {
             throw new Error('User is not in the group');
         }
 
-        const groupRoles = client.getGroupRoles();
         const botRank = client.getBotRank();
 
-        // Sort roles by rank
-        const sortedRoles = [...groupRoles].sort((a, b) => a.rank - b.rank);
+        // Use pre-sorted roles instead of sorting each time
+        const sortedRoles = client.getSortedRoles();
 
         // Find current role index
         const currentIndex = sortedRoles.findIndex(role => role.rank === currentRankInfo.rank);
@@ -297,6 +316,9 @@ async function promote(userId) {
         // Perform the promotion
         console.log(`${colors.blue}[RANKING]${colors.reset} Promoting user ${userId} to ${nextRole.name} (${nextRole.rank})`);
         await noblox.setRank(config.roblox.groupId, userId, nextRole.rank);
+
+        // Invalidate cache after successful promotion
+        invalidateUserRankCache(userId);
 
         const result = {
             success: true,
@@ -333,7 +355,6 @@ async function demote(userId) {
             throw new Error('User is not in the group');
         }
 
-        const groupRoles = client.getGroupRoles();
         const botRank = client.getBotRank();
 
         // Check if user can be modified
@@ -341,8 +362,8 @@ async function demote(userId) {
             throw new Error(`Cannot demote users at or above bot's rank (${botRank})`);
         }
 
-        // Sort roles by rank
-        const sortedRoles = [...groupRoles].sort((a, b) => a.rank - b.rank);
+        // Use pre-sorted roles instead of sorting each time
+        const sortedRoles = client.getSortedRoles();
 
         // Find current role index
         const currentIndex = sortedRoles.findIndex(role => role.rank === currentRankInfo.rank);
@@ -366,6 +387,9 @@ async function demote(userId) {
         // Perform the demotion
         console.log(`${colors.blue}[RANKING]${colors.reset} Demoting user ${userId} to ${prevRole.name} (${prevRole.rank})`);
         await noblox.setRank(config.roblox.groupId, userId, prevRole.rank);
+
+        // Invalidate cache after successful demotion
+        invalidateUserRankCache(userId);
 
         const result = {
             success: true,

@@ -155,8 +155,11 @@ class ConfigService {
             clearTimeout(this.saveTimeout);
             this.saveTimeout = null;
         }
+        // Save first, then clear pendingSave to avoid race condition
+        // where a new save request during _doSave() would be lost
+        const result = this._doSave();
         this.pendingSave = false;
-        return this._doSave();
+        return result;
     }
 
     /**

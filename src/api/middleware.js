@@ -371,6 +371,15 @@ function validateUserId(req, res, next) {
         });
     }
 
+    // Check for overflow - Roblox user IDs are large but should not exceed safe integer range
+    if (parsedId > Number.MAX_SAFE_INTEGER) {
+        return res.status(400).json({
+            success: false,
+            error: 'Invalid userId',
+            message: 'userId exceeds maximum allowed value'
+        });
+    }
+
     // Store the parsed ID for later use
     req.robloxUserId = parsedId;
     next();
@@ -506,6 +515,7 @@ setInterval(() => {
 // Track recent requests to prevent duplicate operations
 const recentRequests = new Map();
 const DEDUP_WINDOW = 5000; // 5 seconds
+const DEDUP_CLEANUP_INTERVAL = 30000; // Cleanup every 30 seconds
 
 /**
  * Generate a deduplication key from request
@@ -538,15 +548,18 @@ function deduplicateRequest(req, res, next) {
     // Store this request
     recentRequests.set(key, { timestamp: now, requestId: req.id });
     
-    // Cleanup old entries
-    for (const [k, v] of recentRequests.entries()) {
-        if (now - v.timestamp > DEDUP_WINDOW) {
-            recentRequests.delete(k);
-        }
-    }
-    
     next();
 }
+
+// Periodic cleanup for recentRequests to prevent memory leaks
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of recentRequests.entries()) {
+        if (now - value.timestamp > DEDUP_WINDOW) {
+            recentRequests.delete(key);
+        }
+    }
+}, DEDUP_CLEANUP_INTERVAL);
 
 // ============================================
 // EXPORTS

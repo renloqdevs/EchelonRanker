@@ -24,10 +24,28 @@ class WebhookService {
     }
 
     /**
+     * Validate a URL string
+     * @param {string} urlString - URL to validate
+     * @returns {boolean} True if valid HTTP/HTTPS URL
+     */
+    isValidUrl(urlString) {
+        try {
+            const url = new URL(urlString);
+            return url.protocol === 'http:' || url.protocol === 'https:';
+        } catch {
+            return false;
+        }
+    }
+
+    /**
      * Initialize the webhook service
      */
     initialize() {
         if (process.env.WEBHOOK_URL) {
+            if (!this.isValidUrl(process.env.WEBHOOK_URL)) {
+                console.error('\x1b[31m[WEBHOOK ERROR]\x1b[0m Invalid WEBHOOK_URL - must be a valid HTTP/HTTPS URL');
+                return;
+            }
             this.webhookUrl = process.env.WEBHOOK_URL;
             this.enabled = true;
             console.log('\x1b[32m[WEBHOOK]\x1b[0m Webhook notifications enabled');
@@ -134,6 +152,9 @@ class WebhookService {
             };
 
             const req = lib.request(options, (res) => {
+                // Consume response body to prevent memory leaks
+                res.resume();
+                
                 if (res.statusCode >= 200 && res.statusCode < 300) {
                     resolve();
                 } else {

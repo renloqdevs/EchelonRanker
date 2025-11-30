@@ -84,9 +84,13 @@ class ApiService {
             }
             
             // Retry logic with exponential backoff for server errors
-            const isRetryable = error.message?.includes('5') || 
+            // Match 5xx status codes specifically (e.g., "HTTP 500", "HTTP 502")
+            const is5xxError = /\bHTTP\s+5\d{2}\b/i.test(error.message || '');
+            const isRetryable = is5xxError || 
                                error.message?.includes('timeout') ||
-                               error.code === 'ECONNREFUSED';
+                               error.code === 'ECONNREFUSED' ||
+                               error.code === 'ECONNRESET' ||
+                               error.code === 'ETIMEDOUT';
             
             if (isRetryable && retryCount < this.maxRetries) {
                 const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);

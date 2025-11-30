@@ -5,22 +5,17 @@
 
 const noblox = require('noblox.js');
 const config = require('../config');
-
-// ANSI color codes for console output
-const colors = {
-    red: '\x1b[31m',
-    green: '\x1b[32m',
-    yellow: '\x1b[33m',
-    blue: '\x1b[34m',
-    cyan: '\x1b[36m',
-    reset: '\x1b[0m',
-    bold: '\x1b[1m'
-};
+const { colors } = require('../utils/colors');
 
 // Store bot information after login
 let botUser = null;
 let botRankInGroup = null;
 let groupRoles = null;
+
+// Pre-computed data structures for O(1) lookups
+let sortedGroupRoles = null;  // Sorted by rank for promote/demote
+let rolesByRank = new Map();  // Map for O(1) rank lookup
+let rolesByName = new Map();  // Map for O(1) name lookup (lowercase)
 
 /**
  * Initialize the Roblox client by logging in with the cookie
@@ -42,6 +37,11 @@ async function initialize() {
         // Get all roles in the group
         groupRoles = await noblox.getRoles(config.roblox.groupId);
         console.log(`${colors.green}${colors.bold}[ROBLOX]${colors.reset} Found ${groupRoles.length} roles in group`);
+
+        // Pre-compute sorted roles and lookup maps for O(1) access
+        sortedGroupRoles = [...groupRoles].sort((a, b) => a.rank - b.rank);
+        rolesByRank = new Map(groupRoles.map(role => [role.rank, role]));
+        rolesByName = new Map(groupRoles.map(role => [role.name.toLowerCase(), role]));
 
         // Get the bot's rank in the group
         const botRank = await noblox.getRankInGroup(config.roblox.groupId, currentUser.UserID);
@@ -112,10 +112,39 @@ function getNoblox() {
     return noblox;
 }
 
+/**
+ * Get pre-sorted roles array (sorted by rank ascending)
+ * @returns {Array|null} Sorted array of group roles
+ */
+function getSortedRoles() {
+    return sortedGroupRoles;
+}
+
+/**
+ * Get a role by its rank number - O(1) lookup
+ * @param {number} rank - The rank number
+ * @returns {Object|undefined} The role object or undefined
+ */
+function getRoleByRank(rank) {
+    return rolesByRank.get(rank);
+}
+
+/**
+ * Get a role by its name - O(1) lookup (case-insensitive)
+ * @param {string} name - The role name
+ * @returns {Object|undefined} The role object or undefined
+ */
+function getRoleByName(name) {
+    return rolesByName.get(name.toLowerCase());
+}
+
 module.exports = {
     initialize,
     getBotUser,
     getBotRank,
     getGroupRoles,
-    getNoblox
+    getNoblox,
+    getSortedRoles,
+    getRoleByRank,
+    getRoleByName
 };
