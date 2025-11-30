@@ -1,16 +1,111 @@
 /**
  * Audit Log Service - Tracks all ranking operations
- * Includes memory-efficient log management
+ * Includes memory-efficient log management with optional persistent storage
  */
+
+const fs = require('fs');
+const path = require('path');
 
 class AuditLog {
     constructor() {
         this.logs = [];
-        this.maxEntries = 100;
+        this.maxEntries = parseInt(process.env.AUDIT_LOG_MAX_ENTRIES) || 100;
         this.cleanupInterval = null;
+        this.persistentLogging = process.env.AUDIT_LOG_FILE === 'true';
+        this.logFilePath = process.env.AUDIT_LOG_PATH || path.join(process.cwd(), 'logs', 'audit.log');
+        this.maxFileSize = parseInt(process.env.AUDIT_LOG_MAX_SIZE_MB) || 10; // MB
+        
+        // Initialize persistent logging if enabled
+        if (this.persistentLogging) {
+            this.initPersistentLogging();
+        }
         
         // Start periodic cleanup
         this.startCleanup();
+    }
+
+    /**
+     * Initialize persistent logging
+     */
+    initPersistentLogging() {
+        try {
+            const logDir = path.dirname(this.logFilePath);
+            if (!fs.existsSync(logDir)) {
+                fs.mkdirSync(logDir, { recursive: true, mode: 0o750 });
+            }
+            console.log(`\x1b[34m[AUDIT]\x1b[0m Persistent logging enabled: ${this.logFilePath}`);
+        } catch (err) {
+            console.error(`\x1b[31m[AUDIT]\x1b[0m Failed to initialize log directory: ${err.message}`);
+            this.persistentLogging = false;
+        }
+    }
+
+    /**
+     * Write log entry to file
+     */
+    writeToFile(entry) {
+        if (!this.persistentLogging) return;
+        
+        try {
+            // Check file size and rotate if needed
+            this.rotateLogIfNeeded();
+            
+            // Append log entry as JSON line
+            const logLine = JSON.stringify(entry) + '\n';
+            fs.appendFileSync(this.logFilePath, logLine, { mode: 0o640 });
+        } catch (err) {
+            console.error(`\x1b[31m[AUDIT]\x1b[0m Failed to write log: ${err.message}`);
+        }
+    }
+
+    /**
+     * Rotate log file if it exceeds max size
+     */
+    rotateLogIfNeeded() {
+        try {
+            if (!fs.existsSync(this.logFilePath)) return;
+            
+            const stats = fs.statSync(this.logFilePath);
+            const fileSizeMB = stats.size / (1024 * 1024);
+            
+            if (fileSizeMB >= this.maxFileSize) {
+                // Rotate: rename current log with timestamp
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const rotatedPath = this.logFilePath.replace('.log', `-${timestamp}.log`);
+                fs.renameSync(this.logFilePath, rotatedPath);
+                console.log(`\x1b[34m[AUDIT]\x1b[0m Log rotated: ${rotatedPath}`);
+                
+                // Clean up old rotated logs (keep last 5)
+                this.cleanupOldLogs();
+            }
+        } catch (err) {
+            console.error(`\x1b[31m[AUDIT]\x1b[0m Log rotation failed: ${err.message}`);
+        }
+    }
+
+    /**
+     * Clean up old rotated log files
+     */
+    cleanupOldLogs() {
+        try {
+            const logDir = path.dirname(this.logFilePath);
+            const baseName = path.basename(this.logFilePath, '.log');
+            
+            const files = fs.readdirSync(logDir)
+                .filter(f => f.startsWith(baseName) && f.endsWith('.log') && f !== path.basename(this.logFilePath))
+                .map(f => ({ name: f, path: path.join(logDir, f), mtime: fs.statSync(path.join(logDir, f)).mtime }))
+                .sort((a, b) => b.mtime - a.mtime);
+            
+            // Keep only the 5 most recent rotated logs
+            if (files.length > 5) {
+                files.slice(5).forEach(f => {
+                    fs.unlinkSync(f.path);
+                    console.log(`\x1b[34m[AUDIT]\x1b[0m Deleted old log: ${f.name}`);
+                });
+            }
+        } catch (err) {
+            console.error(`\x1b[31m[AUDIT]\x1b[0m Failed to cleanup old logs: ${err.message}`);
+        }
     }
 
     /**
@@ -34,7 +129,7 @@ class AuditLog {
     }
 
     /**
-     * Remove entries older than 1 hour
+     * Remove entries older than 1 hour from memory
      */
     cleanup() {
         const oneHourAgo = Date.now() - 3600000;
@@ -44,7 +139,7 @@ class AuditLog {
         );
         const removed = beforeCount - this.logs.length;
         if (removed > 0) {
-            console.log(`\x1b[34m[AUDIT]\x1b[0m Cleaned up ${removed} old log entries`);
+            console.log(`\x1b[34m[AUDIT]\x1b[0m Cleaned up ${removed} old in-memory log entries`);
         }
     }
 
@@ -64,9 +159,10 @@ class AuditLog {
             newRank: entry.newRank || null,
             success: entry.success,
             error: entry.error || null,
-            ip: entry.ip || null
+            ip: this.maskIp(entry.ip) // Mask IP for privacy
         };
 
+        // Add to in-memory log
         this.logs.unshift(logEntry);
 
         // Efficient in-place trimming
@@ -74,7 +170,44 @@ class AuditLog {
             this.logs.length = this.maxEntries;
         }
 
+        // Write to persistent log file
+        this.writeToFile(logEntry);
+
         return logEntry;
+    }
+
+    /**
+     * Mask IP address for privacy (GDPR compliance)
+     */
+    maskIp(ip) {
+        if (!ip) return null;
+        
+        // For IPv4: mask last octet
+        if (ip.includes('.') && !ip.includes(':')) {
+            const parts = ip.split('.');
+            if (parts.length === 4) {
+                return `${parts[0]}.${parts[1]}.${parts[2]}.xxx`;
+            }
+        }
+        
+        // For IPv6: mask last 64 bits
+        if (ip.includes(':')) {
+            const parts = ip.split(':');
+            if (parts.length >= 4) {
+                return parts.slice(0, 4).join(':') + '::xxxx';
+            }
+        }
+        
+        // Handle ::ffff:IPv4 format
+        if (ip.startsWith('::ffff:')) {
+            const ipv4 = ip.slice(7);
+            const parts = ipv4.split('.');
+            if (parts.length === 4) {
+                return `::ffff:${parts[0]}.${parts[1]}.${parts[2]}.xxx`;
+            }
+        }
+        
+        return ip;
     }
 
     /**

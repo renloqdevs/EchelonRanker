@@ -26,38 +26,25 @@ const serverStartTime = Date.now();
 
 /**
  * GET /health
- * Returns server status - useful for uptime monitoring
+ * Returns basic server status - useful for uptime monitoring
+ * Sanitized to not expose sensitive information
  */
 router.get('/health', (req, res) => {
     const botUser = client.getBotUser();
-    const botRank = client.getBotRank();
-    const memUsage = process.memoryUsage();
     
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
         uptime: Math.floor((Date.now() - serverStartTime) / 1000),
-        version: '1.0.0',
-        bot: botUser ? {
-            username: botUser.UserName,
-            userId: botUser.UserID,
-            rank: botRank
-        } : null,
-        system: {
-            nodeVersion: process.version,
-            platform: process.platform,
-            memory: {
-                used: Math.round(memUsage.heapUsed / 1024 / 1024),
-                total: Math.round(memUsage.heapTotal / 1024 / 1024),
-                unit: 'MB'
-            }
-        }
+        version: '1.1.0',
+        // Only expose whether bot is connected, not details
+        botConnected: !!botUser
     });
 });
 
 /**
  * GET /health/detailed
- * Returns detailed server status with more system info
+ * Returns detailed server status with full system info (authenticated)
  */
 router.get('/health/detailed', middleware.authenticate, (req, res) => {
     const botUser = client.getBotUser();
@@ -65,6 +52,7 @@ router.get('/health/detailed', middleware.authenticate, (req, res) => {
     const roles = ranking.getAllRoles();
     const logStats = auditLog.getStats();
     const memUsage = process.memoryUsage();
+    const securityStats = middleware.getSecurityStats();
     
     res.json({
         status: 'ok',
@@ -73,7 +61,7 @@ router.get('/health/detailed', middleware.authenticate, (req, res) => {
             seconds: Math.floor((Date.now() - serverStartTime) / 1000),
             formatted: formatUptime(Date.now() - serverStartTime)
         },
-        version: '1.0.0',
+        version: '1.1.0',
         bot: botUser ? {
             username: botUser.UserName,
             userId: botUser.UserID,
@@ -85,6 +73,11 @@ router.get('/health/detailed', middleware.authenticate, (req, res) => {
             assignableRoles: roles.filter(r => r.canAssign).length
         },
         operations: logStats,
+        security: {
+            lockedIPs: securityStats.lockedIPs.length,
+            activeCooldowns: securityStats.activeCooldowns,
+            pendingDedupe: securityStats.pendingDedupe
+        },
         system: {
             nodeVersion: process.version,
             platform: process.platform,
@@ -129,6 +122,8 @@ function formatUptime(ms) {
 router.post('/api/rank',
     middleware.validateUserId,
     middleware.validateRank,
+    middleware.deduplicateRequest,
+    middleware.checkRankCooldown,
     async (req, res, next) => {
         try {
             const userId = req.robloxUserId;
@@ -167,6 +162,8 @@ router.post('/api/rank',
             // Send webhook notification
             if (result.success && result.changed) {
                 webhook.notifyRankChange(result);
+                // Record for cooldown tracking
+                middleware.recordRankChange(userId);
             }
 
             res.json(result);
@@ -196,6 +193,8 @@ router.post('/api/rank',
  */
 router.post('/api/promote',
     middleware.validateUserId,
+    middleware.deduplicateRequest,
+    middleware.checkRankCooldown,
     async (req, res, next) => {
         try {
             const userId = req.robloxUserId;
@@ -212,6 +211,7 @@ router.post('/api/promote',
 
             if (result.success && result.changed) {
                 webhook.notifyPromotion(result);
+                middleware.recordRankChange(userId);
             }
 
             res.json(result);
@@ -241,6 +241,8 @@ router.post('/api/promote',
  */
 router.post('/api/demote',
     middleware.validateUserId,
+    middleware.deduplicateRequest,
+    middleware.checkRankCooldown,
     async (req, res, next) => {
         try {
             const userId = req.robloxUserId;
@@ -257,6 +259,7 @@ router.post('/api/demote',
 
             if (result.success && result.changed) {
                 webhook.notifyDemotion(result);
+                middleware.recordRankChange(userId);
             }
 
             res.json(result);
@@ -326,17 +329,10 @@ router.get('/api/rank/:userId',
  * Headers: x-api-key
  */
 router.get('/api/user/:username',
+    middleware.validateUsername,
     async (req, res, next) => {
         try {
-            const username = req.params.username;
-
-            if (!username || username.length < 3) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Invalid username',
-                    message: 'Username must be at least 3 characters'
-                });
-            }
+            const username = req.robloxUsername;
 
             // Get user ID from username
             const userId = await ranking.getUserIdFromUsername(username);

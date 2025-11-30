@@ -37,7 +37,7 @@ class DashboardScreen {
         renderer.hideCursor();
 
         // Draw main frame
-        const { contentY } = components.drawFrame('RANKBOT CONSOLE', 'v1.0.9');
+        const { contentY } = components.drawFrame('RANKBOT CONSOLE', 'v1.1.0');
 
         let yOffset = 0;
 
