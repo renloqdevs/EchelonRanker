@@ -194,49 +194,47 @@ class SearchScreen {
                 await this.quickDemote();
             });
         } else {
-            // Search mode
-            input.on('escape', () => {
-                if (this.state.searchQuery) {
-                    this.state.searchQuery = '';
-                    this.state.results = [];
-                    this.render();
-                } else {
-                    this.app.showScreen('dashboard');
-                }
-            });
-
-            input.on('up', () => {
-                if (this.state.selectedIndex > 0) {
-                    this.state.selectedIndex--;
-                    this.render();
-                }
-            });
-
-            input.on('down', () => {
-                if (this.state.selectedIndex < this.state.results.length - 1) {
-                    this.state.selectedIndex++;
-                    this.render();
-                }
-            });
-
-            input.on('return', () => {
-                if (this.state.results.length > 0) {
-                    this.selectUser(this.state.selectedIndex);
-                }
-            });
-
-            // Text input for search
+            // Search mode - text input with special keys for navigation
             input.startTextInput({
                 initialValue: this.state.searchQuery,
                 maxLength: 50,
+                enableHistory: true,
                 onInput: (value) => {
                     this.state.searchQuery = value;
                     this.state.error = null;
                     this.render();
                 },
                 onComplete: async (value) => {
-                    if (value && value.trim()) {
+                    if (this.state.results.length > 0 && !value) {
+                        // If no new input but we have results, select the current one
+                        this.selectUser(this.state.selectedIndex);
+                    } else if (value && value.trim()) {
                         await this.performSearch(value.trim());
+                    }
+                },
+                onCancel: () => {
+                    if (this.state.searchQuery) {
+                        this.state.searchQuery = '';
+                        this.state.results = [];
+                        this.render();
+                        this.setupInput();
+                    } else {
+                        this.app.showScreen('dashboard');
+                    }
+                },
+                // Allow arrow keys to navigate results while typing
+                specialKeys: {
+                    'up': () => {
+                        if (this.state.selectedIndex > 0) {
+                            this.state.selectedIndex--;
+                            this.render();
+                        }
+                    },
+                    'down': () => {
+                        if (this.state.selectedIndex < this.state.results.length - 1) {
+                            this.state.selectedIndex++;
+                            this.render();
+                        }
                     }
                 }
             });

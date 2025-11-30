@@ -204,11 +204,11 @@ class PromoteScreen {
      * Input stage handlers
      */
     setupInputStageHandlers() {
-        input.on('escape', () => this.app.showScreen('dashboard'));
-
+        // Note: escape is handled by onCancel in text input mode
         input.startTextInput({
             initialValue: this.state.userInput,
             maxLength: 50,
+            enableHistory: true,
             onInput: (value) => {
                 this.state.userInput = value;
                 this.state.error = null;

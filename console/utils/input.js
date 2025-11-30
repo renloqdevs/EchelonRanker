@@ -84,7 +84,26 @@ class InputHandler {
      * Handle text input mode
      */
     handleTextInput(str, key) {
-        const { onInput, onComplete, onCancel, maxLength, validator, enableHistory } = this.textInputOptions;
+        const { onInput, onComplete, onCancel, maxLength, validator, enableHistory, specialKeys } = this.textInputOptions;
+
+        // Check for special keys that should work even in text input mode
+        // These are keys that trigger actions instead of typing
+        if (specialKeys && key.name) {
+            const specialHandler = specialKeys[key.name];
+            if (specialHandler) {
+                specialHandler();
+                return;
+            }
+        }
+
+        // Also check for special key by character (for single chars like 's')
+        if (specialKeys && str && specialKeys[str]) {
+            // Only trigger if input is empty (so user can still type the character in text)
+            if (this.inputBuffer.length === 0) {
+                specialKeys[str]();
+                return;
+            }
+        }
 
         if (key.name === 'escape') {
             this.inputMode = 'navigation';
@@ -115,7 +134,18 @@ class InputHandler {
             return;
         }
 
-        // History navigation with up/down arrows
+        // Check if up/down have special handlers (takes priority over history)
+        if (specialKeys && key.name === 'up' && specialKeys['up']) {
+            specialKeys['up']();
+            return;
+        }
+
+        if (specialKeys && key.name === 'down' && specialKeys['down']) {
+            specialKeys['down']();
+            return;
+        }
+
+        // History navigation with up/down arrows (only if no special handlers)
         if (enableHistory && key.name === 'up') {
             this.navigateHistory(1, onInput);
             return;
@@ -306,7 +336,8 @@ class InputHandler {
             onCancel: options.onCancel || (() => {}),
             maxLength: options.maxLength || 100,
             validator: options.validator || null,
-            enableHistory: options.enableHistory !== false // Enable by default
+            enableHistory: options.enableHistory !== false, // Enable by default
+            specialKeys: options.specialKeys || null // Keys that trigger actions instead of typing
         };
 
         if (options.initialValue && options.onInput) {

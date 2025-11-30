@@ -181,14 +181,6 @@ class SetupScreen {
      * Step 1 input handlers
      */
     setupStep1Input() {
-        input.on('escape', () => {
-            input.cleanup();
-            process.exit(0);
-        });
-
-        // Skip setup option
-        input.on('s', () => this.skipSetup());
-
         input.startTextInput({
             initialValue: this.state.apiUrl,
             maxLength: 100,
@@ -207,6 +199,16 @@ class SetupScreen {
                     this.state.error = 'Please enter a valid URL';
                     this.render();
                 }
+            },
+            onCancel: () => {
+                input.cleanup();
+                process.exit(0);
+            },
+            // Special keys that work even when input is empty
+            specialKeys: {
+                's': () => this.skipSetup(),
+                'S': () => this.skipSetup(),
+                'tab': () => this.skipSetup()  // Tab also works to skip
             }
         });
     }
@@ -241,13 +243,7 @@ class SetupScreen {
      * Step 2 input handlers
      */
     setupStep2Input() {
-        input.on('escape', () => {
-            this.state.step = 1;
-            this.state.error = null;
-            this.render();
-            this.setupInput();
-        });
-
+        // Note: escape is handled by onCancel in text input mode
         input.startTextInput({
             initialValue: this.state.apiKey,
             maxLength: 200,
@@ -267,6 +263,12 @@ class SetupScreen {
                     this.state.error = 'API key must be at least 8 characters';
                     this.render();
                 }
+            },
+            onCancel: () => {
+                this.state.step = 1;
+                this.state.error = null;
+                this.render();
+                this.setupInput();
             }
         });
     }
