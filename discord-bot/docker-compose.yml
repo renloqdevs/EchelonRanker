@@ -1,0 +1,60 @@
+# Docker Compose for RankBot Discord Bot
+#
+# Usage:
+#   1. Copy .env.example to .env and configure
+#   2. Run: docker-compose up -d
+#
+# Note: This assumes the RankBot API is running separately
+
+version: '3.8'
+
+services:
+  discord-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rankbot-discord
+    restart: unless-stopped
+    environment:
+      # Discord Configuration
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - CLIENT_ID=${CLIENT_ID}
+      - GUILD_ID=${GUILD_ID:-}
+      
+      # RankBot API Configuration
+      - API_URL=${API_URL:-http://host.docker.internal:3000}
+      - API_KEY=${API_KEY}
+      
+      # Permission Settings
+      - ALLOWED_ROLE_IDS=${ALLOWED_ROLE_IDS:-}
+      - ADMIN_ROLE_IDS=${ADMIN_ROLE_IDS:-}
+      
+      # Optional Settings
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - COMMAND_COOLDOWN=${COMMAND_COOLDOWN:-3}
+      - LOG_CHANNEL_ID=${LOG_CHANNEL_ID:-}
+      - EMBED_COLOR=${EMBED_COLOR:-5865F2}
+    
+    # Connect to host network to reach API on localhost
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    
+    # Security
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+
+networks:
+  default:
+    name: rankbot-network
+    external: true

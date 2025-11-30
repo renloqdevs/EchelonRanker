@@ -1,0 +1,29 @@
+{
+  "name": "rankbot-discord",
+  "version": "1.0.0",
+  "description": "Discord bot for Roblox group ranking - connects to RankBot API",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "deploy": "node deploy-commands.js",
+    "deploy:guild": "node deploy-commands.js --guild",
+    "deploy:global": "node deploy-commands.js --global"
+  },
+  "keywords": [
+    "discord",
+    "roblox",
+    "ranking",
+    "bot"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1",
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
