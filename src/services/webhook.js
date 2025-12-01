@@ -146,7 +146,7 @@ class WebhookService {
                 headers: {
                     'Content-Type': 'application/json',
                     'Content-Length': Buffer.byteLength(data),
-                    'User-Agent': 'RankBot/1.0'
+                    'User-Agent': 'Echelon/1.2.0'
                 },
                 timeout: 10000
             };
@@ -288,9 +288,9 @@ class WebhookService {
      */
     async notifyServerStartup(data) {
         const payload = this.formatDiscordEmbed({
-            title: '🚀 Ranking Bot Online',
+            title: '🚀 Echelon Online',
             color: 0x3498db, // Blue
-            description: 'The ranking bot has started successfully.',
+            description: 'Echelon has started successfully.',
             fields: [
                 { name: 'Bot Account', value: data.botUser?.UserName || 'Unknown', inline: true },
                 { name: 'Bot Rank', value: String(data.botRank || 0), inline: true },
@@ -308,9 +308,9 @@ class WebhookService {
      */
     async notifyServerShutdown(reason) {
         const payload = this.formatDiscordEmbed({
-            title: '⏹️ Ranking Bot Offline',
+            title: '⏹️ Echelon Offline',
             color: 0x95a5a6, // Gray
-            description: 'The ranking bot is shutting down.',
+            description: 'Echelon is shutting down.',
             fields: [
                 { name: 'Reason', value: reason || 'Manual shutdown', inline: false }
             ],
@@ -330,7 +330,7 @@ class WebhookService {
             fields: embed.fields,
             timestamp: embed.timestamp,
             footer: {
-                text: 'RankBot'
+                text: 'Echelon'
             }
         };
 

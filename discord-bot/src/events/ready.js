@@ -89,7 +89,7 @@ function updateStatus(client, state, botConnected = true) {
         },
         online: {
             activity: { 
-                name: botConnected ? 'Roblox Ranks' : 'API Online (Bot Disconnected)', 
+                name: botConnected ? 'your hierarchy | Echelon' : 'API Online (Bot Disconnected)', 
                 type: ActivityType.Watching 
             },
             status: botConnected ? 'online' : 'idle'

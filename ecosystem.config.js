@@ -1,7 +1,7 @@
 /**
  * PM2 Ecosystem Configuration
  * 
- * Production deployment configuration for the Roblox Ranking Bot
+ * Production deployment configuration for Echelon
  * 
  * Usage:
  *   pm2 start ecosystem.config.js --env production
@@ -9,20 +9,20 @@
  * 
  * Management:
  *   pm2 status                    - Check status
- *   pm2 logs rankbot-api         - View logs
- *   pm2 restart rankbot-api      - Restart
- *   pm2 reload rankbot-api       - Zero-downtime reload
+ *   pm2 logs echelon-api         - View logs
+ *   pm2 restart echelon-api      - Restart
+ *   pm2 reload echelon-api       - Zero-downtime reload
  *   pm2 monit                    - Real-time monitoring
  * 
  * Cluster mode (scale horizontally):
- *   pm2 scale rankbot-api 4      - Scale to 4 instances
+ *   pm2 scale echelon-api 4      - Scale to 4 instances
  */
 
 module.exports = {
     apps: [
         {
             // Application name for PM2
-            name: 'rankbot-api',
+            name: 'echelon-api',
             
             // Entry point
             script: 'src/index.js',
@@ -113,7 +113,7 @@ module.exports = {
         
         // Optional: Console UI (if you want to run it separately)
         {
-            name: 'rankbot-console',
+            name: 'echelon-console',
             script: 'console/app.js',
             cwd: './',
             exec_mode: 'fork',
@@ -126,7 +126,7 @@ module.exports = {
             },
             
             // Only start manually
-            // pm2 start ecosystem.config.js --only rankbot-console
+            // pm2 start ecosystem.config.js --only echelon-console
         }
     ],
     
@@ -149,7 +149,7 @@ module.exports = {
             repo: 'git@github.com:renloqdevs/roblox-group-ranker.git',
             
             // Deployment path on remote server
-            path: '/var/www/rankbot',
+            path: '/var/www/echelon',
             
             // Commands to run after deployment
             'pre-deploy-local': '',
@@ -167,7 +167,7 @@ module.exports = {
             host: ['staging-server.com'],
             ref: 'origin/develop',
             repo: 'git@github.com:renloqdevs/roblox-group-ranker.git',
-            path: '/var/www/rankbot-staging',
+            path: '/var/www/echelon-staging',
             'post-deploy': 'npm install && pm2 reload ecosystem.config.js --env staging',
             env: {
                 NODE_ENV: 'staging'

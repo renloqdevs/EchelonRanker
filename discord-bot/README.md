@@ -1,6 +1,6 @@
-# RankBot Discord
+# Echelon Discord Bot
 
-A Discord bot for managing Roblox group ranks through the RankBot API.
+A Discord bot for managing Roblox group ranks through the Echelon API.
 
 ## Features
 
@@ -44,7 +44,7 @@ A Discord bot for managing Roblox group ranks through the RankBot API.
 
 ### Prerequisites
 
-1. **RankBot API** - The ranking API must be running
+1. **Echelon API** - The ranking API must be running
 2. **Discord Bot** - Create a bot at [Discord Developer Portal](https://discord.com/developers/applications)
 3. **Node.js 18+** - Required runtime
 
@@ -94,7 +94,7 @@ DISCORD_TOKEN=your_bot_token
 CLIENT_ID=your_client_id
 GUILD_ID=your_guild_id
 
-# Required - RankBot API
+# Required - Echelon API
 API_URL=http://localhost:3000
 API_KEY=your_api_key
 
@@ -116,7 +116,7 @@ LOG_LEVEL=info
 | `DISCORD_TOKEN` | Yes | Your Discord bot token |
 | `CLIENT_ID` | Yes | Your Discord application ID |
 | `GUILD_ID` | No | Guild ID for command deployment |
-| `API_URL` | Yes | URL of your RankBot API |
+| `API_URL` | Yes | URL of your Echelon API |
 | `API_KEY` | Yes | API key for authentication |
 | `ALLOWED_ROLE_IDS` | No | Role IDs that can use ranking commands |
 | `ADMIN_ROLE_IDS` | No | Role IDs that can use admin commands |
@@ -203,9 +203,9 @@ Some commands (like `/logs`) require admin permissions. Set `ADMIN_ROLE_IDS` or 
 2. Guild commands appear instantly, global commands take up to 1 hour
 3. Check that the bot has the `applications.commands` scope
 
-### "Failed to connect to RankBot API"
+### "Failed to connect to Echelon API"
 
-1. Make sure the RankBot API is running
+1. Make sure the Echelon API is running
 2. Check that `API_URL` in .env is correct
 3. Verify the `API_KEY` matches the API's configuration
 

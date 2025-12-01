@@ -1,7 +1,7 @@
 {
-  "name": "roblox-ranking-bot",
+  "name": "echelon",
   "version": "1.2.0",
-  "description": "A self-hosted Roblox group ranking bot with API endpoints and console UI",
+  "description": "Echelon - A powerful self-hosted Roblox group ranking API with console UI",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -9,18 +9,19 @@
     "console": "node console/app.js",
     "pm2:start": "pm2 start ecosystem.config.js --env production",
     "pm2:dev": "pm2 start ecosystem.config.js --env development",
-    "pm2:stop": "pm2 stop rankbot-api",
-    "pm2:restart": "pm2 restart rankbot-api",
-    "pm2:logs": "pm2 logs rankbot-api",
+    "pm2:stop": "pm2 stop echelon-api",
+    "pm2:restart": "pm2 restart echelon-api",
+    "pm2:logs": "pm2 logs echelon-api",
     "pm2:monit": "pm2 monit"
   },
   "keywords": [
+    "echelon",
     "roblox",
     "ranking",
     "bot",
     "group",
     "api",
-    "console"
+    "hierarchy"
   ],
   "author": "",
   "license": "MIT",

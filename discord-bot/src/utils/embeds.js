@@ -172,7 +172,7 @@ function rolesList(roles, groupName = 'Group') {
 function stats(data) {
     const embed = new EmbedBuilder()
         .setColor(COLORS.primary)
-        .setTitle('📊 RankBot Statistics')
+        .setTitle('📊 Echelon Statistics')
         .setTimestamp();
 
     if (data.bot) {
@@ -245,8 +245,8 @@ function health(data, detailed = false) {
 function help() {
     return new EmbedBuilder()
         .setColor(COLORS.primary)
-        .setTitle('📖 RankBot Commands')
-        .setDescription('Discord bot for managing Roblox group ranks')
+        .setTitle('📖 Echelon Commands')
+        .setDescription('Discord bot for managing Roblox group ranks via Echelon API')
         .addFields(
             {
                 name: '🔄 Ranking Commands',

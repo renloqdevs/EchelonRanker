@@ -1,7 +1,7 @@
 {
-  "name": "rankbot-discord",
+  "name": "echelon-discord",
   "version": "1.0.0",
-  "description": "Discord bot for Roblox group ranking - connects to RankBot API",
+  "description": "Discord bot for Echelon - Roblox group ranking API",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
